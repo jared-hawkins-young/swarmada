@@ -159,7 +159,8 @@ ADR-0032's bump rules exist to prevent. It tightens to MUST at the next major.
 - **Reuse `INVALID_ACTION` for the rejection.** Rejected under *Decision*: it conflates "cannot
   parse" with "outside my world".
 - **Adapter-side only, with bounds from local configuration.** Puts the boundary in two places
-  that must agree and provides no way to detect divergence — the failure mode ITEM-0113 records
-  for harness copies, reproduced in the safety path.
+  that must agree and provides no way to detect divergence — the same failure mode that once let
+  a demo rig validate green against its own copy of the conformance harness while the checkout
+  disagreed, reproduced here in the safety path.
 - **Control-plane only, no adapter check.** Sufficient when the control plane is correct, which
   is the assumption fencing tokens already refuse to make.

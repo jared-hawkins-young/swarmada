@@ -567,7 +567,7 @@ func registerFleetTask() {
 			}
 			// Quorum is meaningful only under completionPolicy: Quorum, and a nil
 			// quorum there is itself a defect worth surfacing rather than hiding
-			// behind a default (ITEM-0050).
+			// behind a default.
 			if t.Spec.CompletionPolicy == fleetv1.CompletionPolicyQuorum {
 				if t.Spec.Quorum == nil {
 					kv = append(kv, cli.KV{Label: "Quorum", Value: "<unset>"})

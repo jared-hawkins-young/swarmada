@@ -43,14 +43,14 @@ func TestFilterDispatchEligible_Filter10Estop(t *testing.T) {
 		{"normal", fleetv1.RobotEstopNormal, false, "no estop"},
 		{"stopping", fleetv1.RobotEstopStopping, true, "stop issued to hardware; the robot may still be moving"},
 		{"stopped", fleetv1.RobotEstopStopped, true, "confirmed at rest, awaiting an operator clear"},
-		// Resuming is not withheld — but note that NOTHING IN THE TREE WRITES IT
-		// (ITEM-0102). RFC-0001 §9.6.2.3 specifies it as the post-clear window;
-		// ClearEstop goes straight to Normal, so this row currently describes a
-		// state that cannot occur at runtime. The row stays because the enum
-		// declares the value and the spec says the system reaches it; when
-		// ITEM-0102 lands, the assertion becomes live rather than hypothetical.
-		{"resuming", fleetv1.RobotEstopResuming, false, "post-clear window; unreachable today, see ITEM-0102"},
-		// Failed IS withheld, per ITEM-0101 (decided 2026-08-13). It does not
+		// Resuming is not withheld — but note that NOTHING IN THE TREE WRITES IT.
+		// RFC-0001 §9.6.2.3 specifies it as the post-clear window; ClearEstop goes
+		// straight to Normal, so this row currently describes a state that cannot
+		// occur at runtime. The row stays because the enum declares the value and
+		// the spec says the system reaches it; when something starts writing
+		// Resuming, the assertion becomes live rather than hypothetical.
+		{"resuming", fleetv1.RobotEstopResuming, false, "post-clear window; unreachable today, nothing writes Resuming"},
+		// Failed IS withheld (decided 2026-08-13). It does not
 		// mean the stop was refused; it means a stop was commanded and never
 		// confirmed, so the robot's physical state is unknown and it must not be
 		// treated as at rest. It is the single most important row in this table:
@@ -80,7 +80,8 @@ func TestFilterDispatchEligible_Filter10Estop(t *testing.T) {
 				return
 			}
 			// An operator debugging "why is my action still Pending" reads this
-			// reason. A withheld robot with no stated cause is ITEM-0027.
+			// reason — exclusions log at V(1), silent at the default level, so the
+			// reason text itself has to carry the explanation.
 			if len(withheld) != 1 {
 				t.Fatalf("estopState %q: want exactly 1 exclusion, got %d", tc.state, len(withheld))
 			}

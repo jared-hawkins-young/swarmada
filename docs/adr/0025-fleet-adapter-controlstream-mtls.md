@@ -124,8 +124,8 @@ with no change to `parseAdapterSAN`.
   requires, and adds a second credential system.
 
 - **Defer §F again.** Rejected: besides leaving the §9.2.7 gap open, it leaves the
-  presence→Ready path unreachable (context §3), so the adapter lifecycle stays
-  broken in any deployment that expects robots to reach `Ready`.
+  presence→Ready path unreachable, so the adapter lifecycle stays broken in any
+  deployment that expects robots to reach `Ready`.
 
 ## Consequences
 

@@ -156,10 +156,10 @@ def confirm_estop(sim, robot: str, tick_dt: float = 0.05, max_ticks: int = 40,
       Nothing in the loop advances anything, so the loop MUST wait.
 
     ``sleep`` supplies that wait. Without it the loop burned ``max_ticks`` in
-    microseconds and returned ``FAILED`` for a robot that stopped correctly, which
-    is ITEM-0107: every real estop reported FAILED while the simulated one passed,
-    because the simulator was quietly supplying the time. Injectable so unit tests
-    stay instant.
+    microseconds and returned ``FAILED`` for a robot that stopped correctly —
+    every real estop reported FAILED while the simulated one passed, because the
+    simulator was quietly supplying the time. Injectable so unit tests stay
+    instant.
 
     ``max_ticks * tick_dt`` is therefore a **wall-clock budget for a confirmed
     stop**, not a loop count. Treat it as a safety parameter.

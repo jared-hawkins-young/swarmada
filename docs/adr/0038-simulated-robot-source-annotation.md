@@ -93,7 +93,7 @@ admission, read from the `FleetAdapter` it binds to.**
 - **Who proposes this.** This ADR originates from a private downstream adapter author (building a
   Fleet Adapter for a physics simulator) who confirmed the gap by reading the current `api/v1`,
   `internal/webhook`, and `docs/adr` sources directly rather than assuming, and is proposing it back
-  through this project's normal intake process (`ITEM-0103`) — not merging it unreviewed.
+  through this project's normal intake process — not merging it unreviewed.
 
 ## Numbering note
 

@@ -497,25 +497,40 @@ announce_scenario() {
   fi
 }
 
+# preflight checks the tools every scenario needs, regardless of which one
+# gets picked — kind/kubectl/docker/make/go and a reachable Docker daemon.
+# Deliberately called from main() BEFORE pick_scenario: a stranger on a
+# machine missing one of these used to see this failure only after already
+# answering the interactive "Pick a scenario" prompt, which read as the
+# scenario picker itself being broken rather than a missing tool
+# (swarmada#26). The LIVE-scenario-only half (python3, proto stub
+# generation) can't move here — it depends on LIVE, which pick_scenario's
+# answer determines — so it stays in preflight_live, called once LIVE is
+# known.
 preflight() {
   step "0/7 — Preflight"
   local missing=0
   for tool in kind kubectl docker make go; do
     if ! have "$tool"; then echo "  missing required tool: $tool" >&2; missing=1; fi
   done
-  if [[ "$LIVE" == 1 ]] && ! have python3 && ! have python; then
-    echo "  missing required tool: python3 (needed for the LIVE scenario path)" >&2
-    missing=1
-  fi
   ((missing == 0)) || fail "install the missing tools and re-run (see examples/warehouse-quickstart/README.md)"
   if ! docker info >/dev/null 2>&1; then
     fail "the Docker daemon is not reachable — start Docker and re-run"
+  fi
+  info "required tools present; Docker daemon reachable"
+}
+
+# preflight_live: the LIVE-scenario-only checks split out of preflight()
+# above. Called from main() right after determine_live_mode, once LIVE is
+# known — still well before any cluster work starts.
+preflight_live() {
+  if [[ "$LIVE" == 1 ]] && ! have python3 && ! have python; then
+    fail "missing required tool: python3 (needed for the LIVE scenario path) — install it and re-run (see examples/warehouse-quickstart/README.md)"
   fi
   if [[ "$LIVE" == 1 && ! -f "proto/fleet_adapter/v1/fleet_adapter_pb2.py" ]]; then
     info "generating Python proto stubs (proto/fleet_adapter/v1/*_pb2*.py) — needed for the LIVE scenario path…"
     make proto-py
   fi
-  info "required tools present; Docker daemon reachable"
 }
 
 # cleanup_stale_run: kill any port-forward/adapter processes left running by a
@@ -801,7 +816,7 @@ apply_fleet() {
     info "(deliver-pallet-001 held back; camera restored to sim-robot-002 mid-scenario — see Step 6.5)"
   elif [[ "$SCENARIO" == "healthy-fleet" ]]; then
     kubectl apply -f "$SAMPLE"
-    # ITEM-0015: the composite view needs a composite to show. One FleetTask with
+    # The composite view needs a composite to show. One FleetTask with
     # a single member, alongside the sample's two standalone FleetActions, so
     # swarmtop's `t` screen renders BOTH shapes at once — a task with its member
     # nested beneath it, and actions that no task owns. Kept here rather than in
@@ -1525,14 +1540,15 @@ main() {
     do_clean_everything
     exit 0
   fi
+  preflight
   pick_scenario
   if ((CLEAN_REQUESTED)); then
     do_clean_everything
     exit 0
   fi
   determine_live_mode
+  preflight_live
   announce_scenario
-  preflight
   cleanup_stale_run
   create_cluster
   build_and_load

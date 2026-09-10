@@ -41,12 +41,18 @@ GO ?= $(shell \
   ls /usr/local/go/bin/go 2>/dev/null || \
   echo "")
 
+# setup-macos is exempt: its entire job is installing Go (and the other
+# prerequisites) on a machine that doesn't have them yet, so it cannot be
+# gated on Go already being found — that made `make setup-macos` itself
+# fail with this same error on a genuinely empty machine (swarmada#25).
 ifeq ($(GO),)
+ifeq ($(filter setup-macos,$(MAKECMDGOALS)),)
 $(error Cannot find the 'go' binary.\
   GoLand users: Settings > Go > GOROOT  shows the exact path. Then:\
     export PATH="<goroot>/bin:$$PATH" >> ~/.zshrc\
   Or install: brew install go\
   Or override: GO=/your/go/bin/go make setup)
+endif
 endif
 
 # Make the located go binary visible to all child processes (golangci-lint,

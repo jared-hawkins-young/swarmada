@@ -15,19 +15,34 @@
 
 #
 # Installs the prerequisites for building and deploying Swarmada on macOS:
-# Homebrew (if missing), Go, kubectl, minikube, Docker Desktop, protoc, and
-# the Go proto codegen plugins. Idempotent — safe to re-run; each step is
+# Homebrew (if missing), Go, kubectl, kind, minikube, Docker Desktop, protoc,
+# and the Go proto codegen plugins. Idempotent — safe to re-run; each step is
 # skipped if already satisfied.
 #
-# macOS only for now (see docs/deploy-minikube.md). Linux/Windows equivalents
-# are tracked as follow-up work closer to release.
+# Covers both local paths documented elsewhere in this repo: `make quickstart`
+# (docs/quickstart.md — kind-based, no existing cluster needed) and
+# scripts/deploy-minikube.sh (docs/deploy-minikube.md — minikube-based). Pick
+# whichever one the doc you're following told you to run next.
+#
+# macOS only for now. Linux/Windows equivalents are tracked as follow-up work
+# closer to release.
 #
 # Usage:
 #   scripts/setup-macos.sh
 #
+# IMPORTANT: if this is the first time Go is installed on this machine (the
+# "Go" step below prints "installing..." rather than "already installed"),
+# run this script on its own and let it finish, THEN open a new terminal (or
+# `eval "$(/opt/homebrew/bin/brew shellenv)"` in this one) before running
+# `make quickstart` — a freshly-`brew install`ed binary is not on PATH in the
+# shell that installed it until the shell re-reads its profile. Chaining
+# `make setup-macos && make quickstart` in one shell skips that and fails
+# with "Cannot find the 'go' binary" even though setup just installed it
+# (swarmada#25) — this is a PATH-timing issue, not a missing prerequisite.
+#
 # What this does NOT do:
-#   - Does not start Docker Desktop or minikube (see scripts/deploy-minikube.sh
-#     and docs/deploy-minikube.md for the actual deploy flow).
+#   - Does not start Docker Desktop or minikube/kind, and does not itself run
+#     either deploy path (see scripts/deploy-minikube.sh / docs/quickstart.md).
 #   - Does not install grpcio-tools (Python proto stubs) — that needs a
 #     `--break-system-packages` or virtualenv decision this script won't make
 #     for you; see the printed note at the end.
@@ -90,6 +105,18 @@ else
   brew install minikube
 fi
 
+# ── kind ──────────────────────────────────────────────────────────────────
+# Needed for `make quickstart` (docs/quickstart.md) — a separate local-cluster
+# path from minikube above; the quickstart creates and tears down its own
+# kind cluster, no minikube profile involved. Installing both here means
+# either documented path works after running this script once (swarmada#26).
+step "kind"
+if have kind; then
+  echo "already installed: $(kind version 2>/dev/null || echo present)"
+else
+  brew install kind
+fi
+
 # ── Docker Desktop ────────────────────────────────────────────────────────
 step "Docker"
 if have docker; then
@@ -123,13 +150,20 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
 step "Done"
 cat <<'EOF'
-All macOS prerequisites for the Go/Docker/minikube path are installed.
+All macOS prerequisites are installed (kind, minikube, kubectl, Go, Docker,
+protoc) — pick whichever local path you're following:
 
-Next steps:
-  1. Start Docker Desktop if you haven't (open -a Docker) and wait for it to
-     report ready.
-  2. Run scripts/deploy-minikube.sh (or follow docs/deploy-minikube.md by
-     hand) to build the image and deploy Swarmada to a minikube cluster.
+  - Fastest, no existing cluster: `make quickstart` (docs/quickstart.md) —
+    creates and tears down its own kind cluster for you.
+  - Already have / prefer a minikube cluster: start Docker Desktop if you
+    haven't (open -a Docker) and wait for it to report ready, then run
+    scripts/deploy-minikube.sh (or follow docs/deploy-minikube.md by hand).
+
+If Go was JUST installed by this script (the "Go" step above said
+"installing...", not "already installed"): open a NEW terminal before running
+`make quickstart` or `make setup-macos && make quickstart` will fail with
+"Cannot find the 'go' binary" — the shell that ran this script doesn't see a
+binary Homebrew installed mid-session until it re-reads its profile.
 
 Not installed by this script (only needed if you're building Python
 reference adapters, not for the Go controller-manager / docker-build path):

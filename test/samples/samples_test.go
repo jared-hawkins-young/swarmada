@@ -288,9 +288,9 @@ func checkFleetTask(t *testing.T, task *swarmadav1.FleetTask) {
 	}
 }
 
-// TestSamplesIncludeMultiMemberFleetTask is the ITEM-0017 assertion: the sample
-// set must ship a composite a reader can open, copy and adapt — and it must have
-// more than one member. A single-member FleetTask never exercises dependsOn,
+// TestSamplesIncludeMultiMemberFleetTask asserts that the sample set must ship
+// a composite a reader can open, copy and adapt — and it must have more than
+// one member. A single-member FleetTask never exercises dependsOn,
 // startCondition, or a partial actionSummary, which are the behaviours that
 // distinguish a composite from a standalone FleetAction.
 func TestSamplesIncludeMultiMemberFleetTask(t *testing.T) {

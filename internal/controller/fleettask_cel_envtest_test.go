@@ -37,10 +37,10 @@ import (
 // regeneration dropped all behave identically to a correct one under the fake
 // client — the object is accepted either way, and nothing ever says so.
 //
-// ITEM-0050 is why this particular rule earns a test: aggregate() treats a nil
-// spec.quorum under completionPolicy: Quorum as quorum 0, so a task that slipped
-// past admission reports Succeeded having done nothing. Admission is the only
-// thing standing between that bug and a user.
+// This particular rule earns a test because of what skips it: aggregate() treats
+// a nil spec.quorum under completionPolicy: Quorum as quorum 0, so a task that
+// slipped past admission reports Succeeded having done nothing. Admission is the
+// only thing standing between that bug and a user.
 func TestEnvtest_FleetTaskQuorumCELRequired(t *testing.T) {
 	requireEnvtest(t)
 	ctx := context.Background()
@@ -68,7 +68,7 @@ func TestEnvtest_FleetTaskQuorumCELRequired(t *testing.T) {
 	if err == nil {
 		t.Fatal("the API server accepted completionPolicy: Quorum with no spec.quorum — " +
 			"the CEL XValidation rule crds/fleettask.md promises is not in force. " +
-			"aggregate() will read the nil quorum as 0 and report Succeeded having done nothing (ITEM-0050)")
+			"aggregate() will read the nil quorum as 0 and report Succeeded having done nothing")
 	}
 	if !strings.Contains(err.Error(), "quorum is required") {
 		t.Errorf("rejected, but not by the expected rule — message was: %v", err)

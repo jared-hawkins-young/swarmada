@@ -153,7 +153,7 @@ class _AsyncSim:
 
 
 def test_confirm_estop_confirms_an_asynchronous_robot() -> None:
-    """ITEM-0107: the loop must WAIT, not just iterate.
+    """The loop must WAIT, not just iterate.
 
     Before the fix this returned FAILED - max_ticks iterations completed in
     microseconds against a robot that needed real time to decelerate, and every

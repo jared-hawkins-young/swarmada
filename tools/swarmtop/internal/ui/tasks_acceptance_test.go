@@ -24,8 +24,8 @@ import (
 	"github.com/swarmada/swarmtop/internal/k8sclient"
 )
 
-// These are the two acceptance tests for the composite FleetTask view
-// (ITEM-0015, spec §7 criteria 1 and 2). They drive the real screen through the
+// These are the two acceptance tests for the composite FleetTask view — spec
+// §7 criteria 1 and 2. They drive the real screen through the
 // key handler and assert on rendered text, rather than calling a row helper
 // directly, so they keep testing the operator-visible contract when the
 // renderer's internals change.
