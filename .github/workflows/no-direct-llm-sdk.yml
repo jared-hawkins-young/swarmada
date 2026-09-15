@@ -1,0 +1,52 @@
+name: no-direct-llm-sdk
+
+# Enforces the "single LLM chokepoint" contract from RFC-0002: every LLM
+# call in the whole monorepo must flow through
+# sidecar/src/swarmada_sidecar/gateway.py or the sidecar's LLMGateway
+# gRPC surface. Direct imports of LLM SDKs anywhere else (Go, Python,
+# adapters, simulation, tooling) fail this check.
+#
+# Rationale: shared observability + cost accounting + safety guardrails
+# for every LLM call in the ecosystem. See rfcs/RFC-0002-ai-sidecar.md
+# §5 and sidecar/docs/AGENT_PROTOCOL.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  scan:
+    name: Scan for direct LLM SDK use
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: grep for banned imports
+        run: |
+          set -euo pipefail
+          BANNED='^(from|import) +(litellm|openai|anthropic|langchain|google\.generativeai|cohere|mistralai|together)( |\.|$)'
+          # scan every .py and .go outside vendored / generated dirs, excluding
+          # the one authorized call site.
+          if grep -rnE "$BANNED" \
+              --include='*.py' --include='*.go' \
+              --exclude-dir=.git \
+              --exclude-dir=vendor \
+              --exclude-dir=node_modules \
+              --exclude-dir=.venv \
+              --exclude-dir=venv \
+              --exclude-dir=__pycache__ \
+              --exclude-dir=proto_gen \
+              . | grep -v 'sidecar/src/swarmada_sidecar/gateway.py'; then
+            echo ""
+            echo "FAIL: direct LLM SDK use detected outside the sanctioned"
+            echo "call site (sidecar/src/swarmada_sidecar/gateway.py)."
+            echo ""
+            echo "Route all LLM calls through one of:"
+            echo "  - Python:  swarmada_sidecar.gateway.Gateway.call(...)"
+            echo "  - gRPC:    sidecar.gateway.v1.LLMGateway/Complete"
+            echo ""
+            echo "See sidecar/docs/AGENT_PROTOCOL.md for the contract"
+            echo "and rfcs/RFC-0002-ai-sidecar.md §5 for the rationale."
+            exit 1
+          fi
+          echo "OK: no direct LLM SDK use outside gateway.py"
