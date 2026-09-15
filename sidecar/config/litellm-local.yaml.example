@@ -1,16 +1,28 @@
-# LiteLLM proxy config for local dev.
+# LiteLLM proxy config template.
 #
 # Copy this file to config/litellm-local.yaml and fill in the {{ ... }}
-# placeholders (or set the env vars and use `envsubst`). NEVER commit the
-# populated copy — the .gitignore blocks *.yaml except *.example.yaml.
+# placeholders (or export the env vars and use `envsubst`). NEVER commit
+# the populated copy — the .gitignore blocks *.yaml except *.example.yaml.
+#
+# ---------------------------------------------------------------------
+# Adding a real provider (Anthropic, OpenAI, Gemini, etc.)
+# ---------------------------------------------------------------------
+# 1. Export the provider's API key in the shell that starts LiteLLM:
+#      export ANTHROPIC_API_KEY=sk-ant-...
+#      export OPENAI_API_KEY=sk-...
+#      export GEMINI_API_KEY=...
+# 2. Uncomment the matching route below (or add your own).
+# 3. Restart LiteLLM. Restart the sidecar with
+#    SIDECAR_ACTIVE_MODEL=<the route name you enabled>.
+#
+# LiteLLM auto-reads *_API_KEY env vars per provider — you do NOT need to
+# put the key in this file. Just uncomment the route and export the key.
 
 model_list:
-  # Local dev routes: names match what's actually serving requests.
-  # Prod would replace these with real Anthropic / OpenAI / etc. routes
-  # under whatever client-facing names prod wants (e.g.
-  # anthropic/claude-3.5-sonnet); the sidecar's SIDECAR_ACTIVE_MODEL
-  # env var switches between them.
-
+  # -----------------------------------------------------------------
+  # Local (ollama) — free, no external API bill. Use these while
+  # developing without spending on hosted models.
+  # -----------------------------------------------------------------
   - model_name: local/llama3.2:1b
     litellm_params:
       model: ollama/llama3.2:1b
@@ -27,11 +39,37 @@ model_list:
       model: ollama/llama-guard3:1b
       api_base: http://localhost:11434
 
+  # -----------------------------------------------------------------
+  # Hosted providers — uncomment + export the matching *_API_KEY.
+  # Cost columns in Langfuse populate automatically from LiteLLM's
+  # built-in model_prices.json (unlike local/*, which reports $0).
+  # -----------------------------------------------------------------
+  # - model_name: anthropic/claude-3-5-sonnet
+  #   litellm_params:
+  #     model: anthropic/claude-3-5-sonnet-latest
+  #     # api_key auto-read from $ANTHROPIC_API_KEY
+  #
+  # - model_name: openai/gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     # api_key auto-read from $OPENAI_API_KEY
+  #
+  # - model_name: gemini/gemini-1.5-pro
+  #   litellm_params:
+  #     model: gemini/gemini-1.5-pro
+  #     # api_key auto-read from $GEMINI_API_KEY
+  #
+  # - model_name: openrouter/anthropic-claude-3-5-sonnet
+  #   litellm_params:
+  #     model: openrouter/anthropic/claude-3.5-sonnet
+  #     # api_key auto-read from $OPENROUTER_API_KEY
+
 litellm_settings:
   drop_params: true
-  # Use `langfuse_otel` — the OTel-based callback compatible with Langfuse
-  # SDK 4.x. The old `langfuse` callback expects langfuse 2.x and errors
-  # out on the newer SDK, which is why model/token/cost data never landed.
+  # `langfuse_otel` is the OTel-based callback compatible with Langfuse
+  # SDK 4.x. Do not use the older `langfuse` callback — it expects
+  # langfuse 2.x and errors on the newer SDK, which is why model /
+  # tokens / cost data goes missing in Langfuse otherwise.
   success_callback: ["langfuse_otel"]
   failure_callback: ["langfuse_otel"]
 

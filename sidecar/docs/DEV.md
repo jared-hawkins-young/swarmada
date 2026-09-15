@@ -129,3 +129,73 @@ That starts the drift-detection gRPC server on `SIDECAR_GRPC_PORT`
 (default 50051). Fire a `SubmitTaskCompletion` at it, watch Langfuse for
 the pipeline trace with nested generation observations, and query
 `GetDiagnosis` to read the persisted output.
+
+## 7. Swap to a real provider (Anthropic, OpenAI, Gemini, OpenRouter…)
+
+Everything above uses local ollama so you can run without an API bill.
+To route through a real hosted provider — anywhere from one-off testing
+to production — the setup is **three edits, no code change:**
+
+1. **Export the provider's API key** in the shell that starts the
+   LiteLLM proxy:
+
+   ```sh
+   export ANTHROPIC_API_KEY=sk-ant-...
+   # or export OPENAI_API_KEY=sk-...
+   # or export GEMINI_API_KEY=...
+   # or export OPENROUTER_API_KEY=...
+   ```
+
+   LiteLLM reads `*_API_KEY` env vars per provider. You do NOT put the
+   key in any file.
+
+2. **Uncomment the matching route** in `config/litellm-local.yaml`
+   (see the "Hosted providers" section in the `.example` template). No
+   restart of the sidecar needed — just LiteLLM.
+
+3. **Point the sidecar at the new route** by setting
+   `SIDECAR_ACTIVE_MODEL` to the route name (e.g.
+   `anthropic/claude-3-5-sonnet`), then restart the sidecar. Config
+   change; no code change.
+
+That's it. In Langfuse the next completion will show:
+
+- `model` = the route name you enabled (e.g.
+  `anthropic/claude-3-5-sonnet`)
+- `cost` = a real number in USD (populated by LiteLLM's built-in
+  `model_prices.json`; local/* routes report $0 because no external
+  bill)
+- `usage` = real provider-reported token counts
+
+### Adding a provider that LiteLLM doesn't already know
+
+LiteLLM ships pricing + adapter for ~100 providers out of the box (see
+`litellm --health` after startup for the current catalog). If you need
+one it doesn't know — a self-hosted endpoint, a custom API — either
+write a LiteLLM custom provider (LiteLLM docs) or add another
+`local/<name>` route pointing at your endpoint via the `openai/`
+adapter and set `api_base` explicitly.
+
+## 8. The mandatory router (`LLMGateway.Complete`) — how downstream services use it
+
+Any service in the Swarmada monorepo — Go controllers, Python
+simulation, external tooling — that needs an LLM MUST call the sidecar's
+gRPC surface rather than importing an LLM SDK directly. The rule is
+enforced by CI (`.github/workflows/no-direct-llm-sdk.yml` + `make
+check-router-only` locally).
+
+The RPC is `sidecar.gateway.v1.LLMGateway/Complete`. Contract lives at
+[`sidecar/proto/gateway/v1/gateway.proto`](../proto/gateway/v1/gateway.proto).
+
+**Python callers (in-process)** should import the Python primitive
+directly:
+
+```python
+from swarmada_sidecar.gateway import Gateway  # or ctx.gateway inside a
+                                              # LangGraph node
+```
+
+**Cross-language / cross-process callers** (Go, external, another
+service): dial `SIDECAR_GRPC_PORT` and call `Complete`. The reply
+carries the Langfuse `trace_id` — persist it alongside whatever your
+service persists so a human can look the trace up later.
