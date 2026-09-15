@@ -21,10 +21,8 @@ import signal
 import sys
 import threading
 import time
-from concurrent import futures
 from typing import Any
 
-import grpc
 import structlog
 
 from drift_detection.aggregator import AggregatorStore
@@ -50,6 +48,7 @@ from swarmada_sidecar.server import (
     _HealthState,
     _configure_logging,
     _start_http_server,
+    build_grpc_server,
 )
 
 log = structlog.get_logger(__name__)
@@ -144,7 +143,7 @@ def main() -> None:
     http_srv = _start_http_server(cfg.metrics_port, health)
 
     try:
-        store, aggregator, drift_detector, graph_run, langfuse, _gateway = _startup(
+        store, aggregator, drift_detector, graph_run, langfuse, gateway = _startup(
             cfg, drift_cfg
         )
     except Exception as exc:  # noqa: BLE001
@@ -154,12 +153,19 @@ def main() -> None:
         http_srv.shutdown()
         raise
 
-    # Import generated stubs; register the service.
+    # Foundation gRPC server (LLMGateway registered) — then layer drift
+    # RPCs on top of the same server.
+    server = build_grpc_server(
+        cfg=cfg,
+        gateway=gateway,
+        langfuse=langfuse,
+        input_guardrail=InputGuardrail(cfg=cfg, gateway=gateway),
+    )
+
     from drift_detection.proto_gen.sidecar.v1 import (  # type: ignore[import-not-found]
         sidecar_pb2_grpc,
     )
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=16))
     servicer = DriftSidecarServicer(
         cfg=cfg,
         drift_cfg=drift_cfg,
@@ -178,6 +184,10 @@ def main() -> None:
         "server.started",
         grpc_port=cfg.grpc_port,
         metrics_port=cfg.metrics_port,
+        registered_services=[
+            "sidecar.gateway.v1.LLMGateway",
+            "sidecar.v1.SidecarService",
+        ],
     )
 
     stop = threading.Event()

@@ -1,7 +1,11 @@
 """Foundation server entrypoint for the swarmada-sidecar.
 
-Starts an HTTP server exposing `/metrics`, `/healthz`, and `/readyz`, then
-runs the fail-closed startup sequence:
+Starts an HTTP server exposing `/metrics`, `/healthz`, and `/readyz`, plus
+a gRPC server exposing the mandatory `sidecar.gateway.v1.LLMGateway`
+service (single Complete RPC — the language-agnostic entry point every
+Swarmada component uses to make LLM calls).
+
+Startup runs the fail-closed dependency chain:
 
 1. Load Config; validate active_model; fail on missing required fields.
 2. Open SQLite store (a durable path is required even for the foundation
@@ -9,15 +13,15 @@ runs the fail-closed startup sequence:
 3. Verify Langfuse reachable; fetch pinned prompt (proves registry +
    version).
 4. Verify LiteLLM gateway reachable.
+5. Register LLMGatewayServicer + start gRPC on `SIDECAR_GRPC_PORT`.
 
 If any gate fails, the pod does not become Ready (Constitution Principle
 II, spec FR-010).
 
-The foundation does NOT register any gRPC services on its own — it has
-no domain RPCs to expose. Extend `main()` (or wrap it) in a downstream
-module to add domain services. See
-`examples/drift-detection/src/drift_detection/__main__.py` for a reference
-implementation that composes this foundation with a DriftSidecarServicer.
+Domain-specific services (e.g. the drift-detection example's
+DriftSidecarServicer) get registered on the same gRPC server via
+downstream modules — see
+`examples/drift-detection/src/drift_detection/__main__.py`.
 """
 
 from __future__ import annotations
@@ -28,9 +32,11 @@ import sqlite3
 import sys
 import threading
 import time
+from concurrent import futures
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
+import grpc
 import structlog
 from prometheus_client import generate_latest
 from prometheus_client.core import REGISTRY
@@ -164,14 +170,45 @@ def _startup(cfg: Config) -> tuple[LangfuseClient, Gateway]:
     return langfuse, gateway
 
 
+def build_grpc_server(
+    *,
+    cfg: Config,
+    gateway: Gateway,
+    langfuse: LangfuseClient,
+    input_guardrail: Any = None,
+    max_workers: int = 16,
+) -> grpc.Server:
+    """Construct a gRPC server with the foundation's LLMGateway registered.
+
+    Downstream modules call this to get a server with the mandatory
+    Complete RPC already wired, then register their own domain services
+    on it before starting.
+    """
+    from swarmada_sidecar.llm_gateway_service import LLMGatewayServicer
+
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
+    llm_servicer = LLMGatewayServicer(
+        cfg=cfg,
+        gateway=gateway,
+        langfuse=langfuse,
+        input_guardrail=input_guardrail,
+    )
+    llm_servicer.register(server)
+    return server
+
+
 def main() -> None:
     """Foundation entrypoint.
 
-    Starts the HTTP metrics / healthcheck server, runs fail-closed startup,
-    then blocks on signal until shutdown. The foundation exposes no gRPC
-    services on its own — extend `main()` in a downstream module (see
-    `examples/drift-detection/src/drift_detection/__main__.py`) to add
-    domain-specific gRPC services on top of the returned handles.
+    Starts:
+    - HTTP metrics/healthcheck server on `SIDECAR_METRICS_PORT`
+    - gRPC server on `SIDECAR_GRPC_PORT` with the mandatory
+      `sidecar.gateway.v1.LLMGateway` service registered
+
+    Blocks on signal until shutdown. Domain-specific gRPC services get
+    registered via downstream modules that call `build_grpc_server(...)`
+    and then add their own services before starting — see
+    `examples/drift-detection/src/drift_detection/__main__.py`.
     """
     cfg = load_config()
     _configure_logging(cfg)
@@ -180,7 +217,7 @@ def main() -> None:
     http_srv = _start_http_server(cfg.metrics_port, health)
 
     try:
-        langfuse, _gateway = _startup(cfg)
+        langfuse, gateway = _startup(cfg)
     except Exception as exc:  # noqa: BLE001
         log.error("startup.failed", error=str(exc))
         # HTTP server stays up so /readyz can report not-ready to k8s.
@@ -189,11 +226,16 @@ def main() -> None:
         http_srv.shutdown()
         raise
 
+    grpc_server = build_grpc_server(cfg=cfg, gateway=gateway, langfuse=langfuse)
+    grpc_server.add_insecure_port(f"[::]:{cfg.grpc_port}")
+    grpc_server.start()
+
     health.set_ready(True)
     log.info(
         "server.started",
+        grpc_port=cfg.grpc_port,
         metrics_port=cfg.metrics_port,
-        note="foundation only; register gRPC services in a downstream module",
+        registered_services=["sidecar.gateway.v1.LLMGateway"],
     )
 
     stop = threading.Event()
@@ -209,6 +251,7 @@ def main() -> None:
         stop.wait(timeout=1.0)
 
     health.set_ready(False)
+    grpc_server.stop(grace=10)
     langfuse.flush()
     http_srv.shutdown()
     log.info("server.stopped")
