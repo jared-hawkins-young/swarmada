@@ -7,22 +7,41 @@
 
 ## 1. Summary
 
-Add a new optional subsystem to Swarmada — a Python microservice (the
+Add a new subsystem to Swarmada — a Python microservice (the
 "sidecar") — that provides an OSS-first, self-hostable LLM reasoning
-layer for the fleet. Every LLM call goes through one model-routing proxy
-(LiteLLM) and one observability layer (Langfuse), composed with a
-multi-step orchestration primitive (LangGraph) and two guardrails
-(LlamaGuard on input, Guardrails AI on output). The sidecar exposes a
-gRPC surface and a Python SDK; existing controllers and adapters call it
-when they want LLM-backed reasoning. It is opt-in and defaults off.
+layer for the fleet and is the **mandatory chokepoint** for every LLM
+call anywhere in the monorepo. Every LLM call goes through one
+model-routing proxy (LiteLLM) and one observability layer (Langfuse),
+composed with a multi-step orchestration primitive (LangGraph) and two
+guardrails (LlamaGuard on input, Guardrails AI on output).
 
-The scope of this RFC is **the primitive**, not a specific use case.
-Drift diagnosis on a degraded robot is one worked example — provided as
-a reference implementation under `sidecar/examples/drift-detection/` —
-but the point of the sidecar is that any future capability that needs
-tracing, model routing, guardrails, or a stateful multi-step agent can
-stand on the same primitive without reinventing observability, safety,
-or model plumbing.
+The sidecar exposes:
+- A **gRPC surface** (`sidecar.gateway.v1.LLMGateway/Complete`) that
+  any Swarmada component — Go controllers, Python simulation, external
+  tooling — calls when it needs an LLM. Language-agnostic.
+- A **Python SDK** (`swarmada_sidecar.gateway.Gateway.call`) for
+  in-process Python callers.
+
+The rule is enforced by a repo-root CI check
+(`.github/workflows/no-direct-llm-sdk.yml`) that grep-scans the whole
+monorepo for direct imports of LLM SDKs (`litellm`, `openai`,
+`anthropic`, `langchain`, `google.generativeai`, etc.) and fails the
+build if any exist outside `sidecar/src/swarmada_sidecar/gateway.py`.
+So the "mandatory" is not a social convention — it's a build gate.
+
+The sidecar is **not currently invoked by any existing controller**
+because upstream Swarmada Go has zero LLM calls today. When any future
+capability wants one — starting with the drift-detection reference
+example under `sidecar/examples/` — it uses the sidecar. It cannot
+route around it.
+
+The scope of this RFC is **the primitive plus the enforcement**, not a
+specific use case. Drift diagnosis on a degraded robot is one worked
+example — provided as a reference implementation under
+`sidecar/examples/drift-detection/` — but the point is that every
+future capability that needs LLM reasoning stands on the same primitive
+without reinventing observability, safety, or model plumbing, and
+cannot bypass it.
 
 ## 2. Motivation
 
@@ -81,13 +100,39 @@ microservice. The sidecar builds a container image and deploys as a
 Kubernetes workload (Helm chart lands in a follow-up commit under
 `deploy/helm/sidecar/`). It exposes:
 
-- **gRPC** on port 50051 — the RPC surface Go controllers call.
-- **HTTP** on port 9099 — `/metrics` (Prometheus), `/healthz`
-  (liveness), `/readyz` (readiness).
+- **gRPC** on port `SIDECAR_GRPC_PORT` (default 50051) — the mandatory
+  `sidecar.gateway.v1.LLMGateway/Complete` RPC that every Swarmada
+  component calls when it needs an LLM. Contract at
+  `sidecar/proto/gateway/v1/gateway.proto`. Response includes the
+  Langfuse `trace_id` so callers can persist it alongside their own
+  state for downstream correlation.
+- **HTTP** on port `SIDECAR_METRICS_PORT` (default 9099) — `/metrics`
+  (Prometheus), `/healthz` (liveness), `/readyz` (readiness).
 
 The service refuses to enter `Ready` unless every dependency
 (LiteLLM proxy, Langfuse, SQLite state, pinned prompt registry
 entry) is reachable — fail-closed per Principle II below.
+
+### 4.1a CI enforcement of the "single chokepoint" rule
+
+`.github/workflows/no-direct-llm-sdk.yml` runs on every push and PR. It
+grep-scans the entire monorepo for banned imports:
+
+```
+^(from|import) +(litellm|openai|anthropic|langchain|
+                 google\.generativeai|cohere|mistralai|together)( |\.|$)
+```
+
+and fails the build if any occur outside
+`sidecar/src/swarmada_sidecar/gateway.py`. Excludes: `vendor/`,
+`.venv/`, `node_modules/`, `__pycache__/`, `proto_gen/`, `.git/`. The
+same check runs locally as `make check-router-only` from `sidecar/`.
+
+This makes the "one chokepoint" property a build gate, not a
+convention. A contributor who adds `import openai` in a Go adapter's
+sidecar Python helper, or in a simulation script, or in a controller
+test, cannot merge without either routing through the sidecar or
+explicitly justifying an exception in a follow-up RFC.
 
 ### 4.2 Foundation modules
 
