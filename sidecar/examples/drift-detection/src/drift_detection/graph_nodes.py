@@ -100,11 +100,25 @@ def classify_drift(state: AgentState, ctx: NodeContext) -> AgentState:
 
 
 def guardrail_input(state: AgentState, ctx: NodeContext) -> AgentState:
-    """Run LlamaGuard over any operator-provided input carried in the drift
-    event. On block, populate errors and short-circuit."""
+    """Run LlamaGuard over operator-provided input carried in the drift
+    event. Skipped by default because the drift event is system-generated
+    telemetry (robot IDs, model versions, class predictions), not
+    operator text — LlamaGuard classifies that internal jargon as
+    adversarial in isolation.
+
+    If a future capability adds an `operator_note` field to the drift
+    event (e.g. a natural-language annotation entered in the ops UI),
+    THAT field flows through LlamaGuard here. See RFC-0002 §5.
+    """
     drift_event = state.payload.get("drift_event", {})
-    de_json = json.dumps(drift_event, sort_keys=True)
-    verdict = ctx.input_guardrail.check(de_json)
+    operator_text = drift_event.get("operator_note")
+    if not operator_text:
+        state.payload["input_guardrail_verdict"] = {
+            "safe": True,
+            "reason": "no_operator_input",
+        }
+        return state
+    verdict = ctx.input_guardrail.check(str(operator_text))
     state.payload["input_guardrail_verdict"] = verdict.model_dump()
     if not verdict.safe:
         guardrail_blocks_total.labels(
