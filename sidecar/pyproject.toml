@@ -1,0 +1,77 @@
+[project]
+name = "swarmada-sidecar"
+version = "0.1.0"
+description = "OSS LLM reasoning primitive for Swarmada: LiteLLM + Langfuse + LangGraph + LlamaGuard + Guardrails AI."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Jared Hawkins-Young" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # Orchestration + LLM stack (all OSS per Constitution Principle I).
+    # Version floors reflect what the real e2e stack was verified against:
+    #   - langfuse >=4  : OTel-based SDK; earlier majors are 2.x and use a
+    #                     different tracing API (no `start_as_current_observation`).
+    #   - litellm >=1.100: needed for the `langfuse_otel` callback name
+    #                      (the older `langfuse` callback errors on SDK 4.x).
+    "langgraph>=0.2.50",
+    "langchain-core>=0.3.0",
+    "langfuse>=4.0.0",
+    "litellm>=1.100.0",
+    "guardrails-ai>=0.5.0",
+    # Config + validation
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    # Observability + storage (stdlib sqlite3)
+    "prometheus-client>=0.21.0",
+    # Async runtime
+    "anyio>=4.6.0",
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "types-protobuf>=5.28.0",
+    # pytest kept available for ad-hoc unit tests when they're worth writing.
+    # The repo doesn't ship an upfront pytest suite — verification is real
+    # e2e runs against the running stack (see docs/DEV.md).
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    # grpcio-tools kept in dev extras because the drift-detection example
+    # relies on `make proto-gen`; the foundation itself has no proto surface.
+    "grpcio>=1.66.0",
+    "grpcio-tools>=1.66.0",
+    "protobuf>=5.28.0",
+]
+
+[project.scripts]
+swarmada-sidecar = "swarmada_sidecar.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/swarmada_sidecar"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/swarmada_sidecar"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

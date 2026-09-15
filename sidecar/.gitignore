@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# venv
+.venv/
+venv/
+env/
+ENV/
+
+# uv
+.uv-cache/
+.python-version
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+
+# ruff / mypy
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# local state
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# secrets (belt + suspenders; never commit)
+*.env
+*.env.*
+!*.env.example
+config/secrets.yaml
+config/*-secrets.yaml
+!config/*.example.yaml
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Generated gRPC stubs (regenerable via example's `make proto-gen`).
+# Any example that generates stubs writes them to `proto_gen/` beside its
+# own `src/<pkg>/` — glob covers all examples.
+examples/*/src/*/proto_gen/
