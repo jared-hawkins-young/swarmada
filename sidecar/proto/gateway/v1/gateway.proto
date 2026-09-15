@@ -1,0 +1,94 @@
+// Sidecar LLM Gateway — the single, mandatory RPC surface every Swarmada
+// component uses when it needs an LLM. Language-agnostic (Go controllers,
+// Python simulation, external tooling all speak gRPC) and enforced by the
+// repo-root CI check that forbids direct LLM SDK imports.
+//
+// Every Complete call flows through the LiteLLM proxy (config-driven model
+// routing) and emits a Langfuse trace + generation observation (model,
+// tokens, cost). Callers get back the response plus the Langfuse trace_id
+// for downstream correlation.
+//
+// Versioned per Constitution Principle V (Contract Stability). Breaking
+// changes require sidecar.gateway.v2.
+
+syntax = "proto3";
+
+package sidecar.gateway.v1;
+
+option go_package = "github.com/swarmada/swarmada/sidecar/proto/gateway/v1;gatewayv1";
+
+service LLMGateway {
+  // Send one chat-style completion request. The sidecar handles model
+  // routing, tracing, guardrails, retries, and cost accounting.
+  //
+  // Fail-closed: retry exhaustion, guardrail block, or malformed model
+  // output all surface as gRPC status codes; there is no "silent success"
+  // path (Constitution Principle II).
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+}
+
+message CompleteRequest {
+  // Optional. If empty, the sidecar uses its configured active_model
+  // (env var SIDECAR_ACTIVE_MODEL, resolved through the LiteLLM proxy
+  // catalog). Callers that need a specific model override here.
+  string model = 1;
+
+  // The chat messages, in order. Roles are "system", "user", "assistant".
+  repeated Message messages = 2;
+
+  // Optional structured-output request. When set to JSON_OBJECT, the
+  // response content will be a JSON object the caller can parse.
+  ResponseFormat response_format = 3;
+
+  // Free-form metadata attached to the Langfuse root span. Callers use
+  // this to add correlation IDs (e.g. fleet_action_id, robot_id) for
+  // downstream trace queries.
+  map<string, string> metadata = 4;
+
+  // Optional root-span name in Langfuse; defaults to "llm_gateway_complete".
+  string trace_name = 5;
+
+  // Optional. When set, and the sidecar's InputGuardrail is enabled,
+  // this text is what LlamaGuard classifies (rather than any operator
+  // text in messages[]). Callers that already ran their own safety
+  // check leave this empty.
+  string operator_input = 6;
+}
+
+message Message {
+  string role = 1;
+  string content = 2;
+}
+
+message ResponseFormat {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    JSON_OBJECT = 1;
+  }
+  Type type = 1;
+}
+
+message CompleteResponse {
+  // The assistant's reply content. When response_format=JSON_OBJECT,
+  // this is a JSON string the caller parses.
+  string content = 1;
+
+  // The model that actually served the request (as reported by
+  // LiteLLM). Useful when the sidecar routes based on rules; caller
+  // knows what generated the reply.
+  string model = 2;
+
+  // The Langfuse trace id for this request. Callers persist this
+  // alongside whatever they persist about the request so a human can
+  // look the trace up in the Langfuse UI later.
+  string trace_id = 3;
+
+  // Token accounting reported by the model provider.
+  Usage usage = 4;
+}
+
+message Usage {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 total_tokens = 3;
+}

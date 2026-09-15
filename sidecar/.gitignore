@@ -64,7 +64,9 @@ config/*-secrets.yaml
 *.swo
 .DS_Store
 
-# Generated gRPC stubs (regenerable via example's `make proto-gen`).
+# Generated gRPC stubs (regenerable via `make proto-gen`).
+# Foundation LLMGateway stubs.
+src/swarmada_sidecar/proto_gen/
 # Any example that generates stubs writes them to `proto_gen/` beside its
 # own `src/<pkg>/` — glob covers all examples.
 examples/*/src/*/proto_gen/
