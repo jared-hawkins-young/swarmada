@@ -1,0 +1,47 @@
+[project]
+name = "drift-detection"
+version = "0.1.0"
+description = "Reference agent built on swarmada-sidecar: rolling-window drift diagnosis for a robotics fleet."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Jared Hawkins-Young" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # Foundation
+    "swarmada-sidecar",
+    # gRPC contract + generation (drift-detection owns its own .proto)
+    "grpcio>=1.66.0",
+    "grpcio-tools>=1.66.0",
+    "protobuf>=5.28.0",
+    # Everything else transitively via swarmada-sidecar.
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "types-protobuf>=5.28.0",
+]
+
+[project.scripts]
+drift-detection = "drift_detection.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/drift_detection"]
+
+[tool.uv.sources]
+# Local editable install of the sibling foundation package.
+swarmada-sidecar = { path = "../..", editable = true }

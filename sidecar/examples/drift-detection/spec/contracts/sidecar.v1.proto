@@ -1,0 +1,99 @@
+// swarmada-ai-sidecar gRPC contract v1.
+//
+// Consumed by the Swarmada Go control plane. Versioned per Constitution
+// Principle V (Contract Stability). Breaking changes require a new package
+// version (sidecar.v2) with dual-support during migration.
+//
+// This file is the CONTRACT. The generated Python and Go stubs derive from it.
+
+syntax = "proto3";
+
+package sidecar.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/swarmada/swarmada-ai-sidecar/proto/sidecar/v1;sidecarv1";
+
+// SidecarService is the RPC surface the Swarmada Go control plane calls.
+service SidecarService {
+  // Submit one task-completion result from a robot. The sidecar aggregates
+  // into a rolling window keyed by (robot_id, model_id, model_version,
+  // task_type) and may trigger a drift diagnosis asynchronously.
+  //
+  // Failure modes surface as gRPC status codes; there is no "silent success"
+  // path (Constitution Principle II).
+  rpc SubmitTaskCompletion(TaskCompletionResult) returns (SubmitAck);
+
+  // Retrieve the drift diagnosis (if any) associated with a specific
+  // (robot_id, fleet_action_id) tuple.
+  //
+  // Returns NOT_FOUND if no diagnosis exists for the tuple.
+  // Returns diagnosis payload if one is on record within the retention window.
+  rpc GetDiagnosis(GetDiagnosisRequest) returns (DiagnosisResponse);
+}
+
+// TaskCompletionResult is the unit of input. See data-model.md.
+message TaskCompletionResult {
+  string robot_id = 1;
+  string fleet_action_id = 2;
+  string model_id = 3;
+  string model_version = 4;       // semver
+  float confidence = 5;           // 0.0-1.0
+  repeated ClassScore class_predictions = 6;   // optional top-k
+  google.protobuf.Timestamp captured_at = 7;
+  string task_type = 8;
+}
+
+message ClassScore {
+  string label = 1;
+  float score = 2;                 // 0.0-1.0
+}
+
+// SubmitAck is intentionally minimal. The sidecar acknowledges receipt of the
+// sample; whether that sample triggered a drift diagnosis is discovered via
+// GetDiagnosis or via Langfuse traces.
+message SubmitAck {
+  bool accepted = 1;
+  // If the sample was rejected (duplicate, malformed), the reason.
+  // Empty on accepted=true.
+  string reject_reason = 2;
+}
+
+message GetDiagnosisRequest {
+  string robot_id = 1;
+  string fleet_action_id = 2;
+}
+
+message DiagnosisResponse {
+  // Present only if diagnosis exists on the sidecar.
+  DriftDiagnosis diagnosis = 1;
+  bool found = 2;
+}
+
+message DriftDiagnosis {
+  string robot_id = 1;
+  string fleet_action_id = 2;
+  string model_id = 3;
+  string model_version = 4;
+  string task_type = 5;
+
+  repeated string root_cause_hypotheses = 6;
+  RecommendedAction recommended_action = 7;
+  float confidence = 8;              // 0.0-1.0, diagnosis confidence
+  string human_readable_summary = 9;
+
+  // Provenance
+  string model_used = 10;            // LiteLLM identifier
+  string prompt_version = 11;        // Langfuse prompt registry version
+  google.protobuf.Timestamp created_at = 12;
+  string langfuse_trace_id = 13;
+}
+
+enum RecommendedAction {
+  RECOMMENDED_ACTION_UNSPECIFIED = 0;
+  RETRAIN = 1;
+  RECALIBRATE_SENSOR = 2;
+  INSPECT_HARDWARE = 3;
+  INVESTIGATE = 4;
+  NO_ACTION = 5;
+}
